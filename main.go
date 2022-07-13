@@ -1,0 +1,145 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"math/rand"
+	"os"
+	"os/exec"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
+)
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+func main() {
+	start := time.Now()
+	if err := os.RemoveAll("clones"); err != nil {
+		panic(err)
+	}
+
+	if err := os.RemoveAll("short.sha"); err != nil {
+		panic(err)
+	}
+
+	// Args
+	workers := flag.Int("w", 1, "number of workers")
+	flag.Parse()
+
+	// Async
+	ctx, cancel := context.WithCancel(context.Background())
+	group, ctx := errgroup.WithContext(ctx)
+	shaChan := make(chan string)
+
+	// Start workers
+	for worker := 0; worker < *workers; worker++ {
+		group.Go(findLuckySHA(ctx, start, worker, shaChan))
+	}
+
+	sha := <-shaChan
+	fmt.Printf("success! the lucky sha was %q\n", sha)
+
+	cancel()
+	if err := group.Wait(); err != nil {
+		panic(err)
+	}
+}
+
+func findLuckySHA(ctx context.Context, start time.Time, worker int, shaChan chan string) func() error {
+	return func() error {
+		repoPath := path.Join("clones", strconv.Itoa(int(start.Unix())), fmt.Sprintf("%d-self-referential-commit", worker))
+		if err := gitInit(ctx, repoPath); err != nil {
+			return errors.Wrapf(err, "failed to git init %q", repoPath)
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				shortSha := randomShortSHA()
+				message := fmt.Sprintf("short sha: %s", shortSha)
+				output, err := gitCommit(ctx, repoPath, message)
+				if err != nil {
+					return err
+				}
+
+				if strings.TrimSpace(output) == fmt.Sprintf("[main %s] %s", shortSha, message) {
+					shaChan <- shortSha
+					close(shaChan)
+
+					if err := os.WriteFile("short.sha", []byte(shortSha), 0666); err != nil {
+						return errors.Wrapf(err, "failed to write file under repo %q", repoPath)
+					}
+				} else {
+					if err := gitReset(ctx, repoPath); err != nil {
+						return err
+					}
+
+					if err := gitGC(ctx, repoPath); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+}
+
+func gitInit(ctx context.Context, repoPath string) error {
+	output, err := exec.CommandContext(ctx, "git", "clone", "https://github.com/broothie/self-referential-commit.git", repoPath).CombinedOutput()
+	if err != nil {
+		fmt.Println(string(output))
+		return errors.Wrapf(err, "failed to init git repo at %q", repoPath)
+	}
+
+	return nil
+}
+
+func gitCommit(ctx context.Context, repoPath, message string) (string, error) {
+	output, err := exec.CommandContext(ctx, "git", "-C", repoPath, "commit", "--allow-empty", "-m", message).CombinedOutput()
+	if err != nil {
+		fmt.Println(string(output))
+		return "", errors.Wrapf(err, "failed to commit to repo at %q", repoPath)
+	}
+
+	return string(output), nil
+}
+
+func gitReset(ctx context.Context, repoPath string) error {
+	output, err := exec.CommandContext(ctx, "git", "-C", repoPath, "reset", "--hard", "HEAD~").CombinedOutput()
+	if err != nil {
+		fmt.Println(string(output))
+		return errors.Wrapf(err, "failed to reset repo at %q", repoPath)
+	}
+
+	return nil
+}
+
+func gitGC(ctx context.Context, repoPath string) error {
+	output, err := exec.CommandContext(ctx, "git", "-C", repoPath, "gc").CombinedOutput()
+	if err != nil {
+		fmt.Println(string(output))
+		return errors.Wrapf(err, "failed to gc repo at %q", repoPath)
+	}
+
+	return nil
+}
+
+func randomShortSHA() string {
+	const hexRunes = "0123456789abcdef"
+
+	runes := make([]rune, 7)
+	for i := range runes {
+		runes[i] = rune(hexRunes[rand.Intn(len(hexRunes))])
+	}
+
+	return string(runes)
+}
