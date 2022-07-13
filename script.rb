@@ -1,31 +1,35 @@
+require 'async'
+require 'fileutils'
 
-CHARACTERS = ('0'..'9').to_a + ('a'..'f').to_a
+NUM_WORKERS = ENV.fetch('NUM_WORKERS', 1)
+CHARACTERS = (('0'..'9').to_a + ('a'..'f').to_a).freeze
 
-def random_hex_char
-  CHARACTERS.sample
-end
+start_time = Time.now
 
-def random_short_sha
-  Array.new(7) { random_hex_char }.join
-end
+Async do |task|
+  NUM_WORKERS.times do |worker|
+    task.async do
+      repo_path = File.join('clones', start_time.to_i.to_s, "#{worker}-self-referential-commit")
+      FileUtils.mkdir_p(repo_path)
 
-if __FILE__ == $0
-  counter = 0
-  loop do
-    attempt = counter + 1
-    short_sha = random_short_sha
-    puts "attempt #{attempt}, short sha is #{short_sha}" if (counter % 1000).zero?
+      puts `git clone https://github.com/broothie/self-referential-commit.git #{repo_path}`
 
-    message = "attempt #{attempt}: #{short_sha}"
-    output = `git commit --allow-empty -m '#{message}'`.chomp
+      loop do
+        short_sha = Array.new(7) { CHARACTERS.sample }.join
+        puts "attempt with short sha #{short_sha}"
 
-    if output == "[main #{short_sha}] #{message}"
-      puts "success! the lucky short sha is #{short_sha}"
-      break
-    else
-      `git reset --hard HEAD~`
+        message = "short sha: #{short_sha}"
+        puts output = `git -C #{repo_path} commit --allow-empty -m '#{message}'`.chomp
+
+        if output == "[main #{short_sha}] #{message}"
+          File.write('short.sha', short_sha)
+          puts "success! the lucky short sha is #{short_sha}, under #{repo_path}"
+          task.stop
+        else
+          puts `git -C #{repo_path} reset --hard HEAD~`
+          puts `git -C #{repo_path} gc`
+        end
+      end
     end
-
-    counter += 1
   end
 end
