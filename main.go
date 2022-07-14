@@ -48,6 +48,7 @@ func main() {
 	// Start workers
 	for worker := 0; worker < *workers; worker++ {
 		group.Go(findLuckySHA(ctx, start, worker, resultChan))
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	// Wait and cancel

@@ -15,4 +15,7 @@ i.reset:
 	rm -rf nohup.out pid ../clones
 
 i.stop:
-	kill $(cat pid)
+	kill "$(cat pid)"
+
+i.ps:
+	ps ax | grep self-referential-commit
