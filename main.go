@@ -16,8 +16,14 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var (
+	workers  = flag.Int("w", 1, "number of workers")
+	logEvery = flag.Int("l", 10, "log every l attempts")
+)
+
 func init() {
 	rand.Seed(time.Now().UnixNano())
+	flag.Parse()
 }
 
 func main() {
@@ -29,10 +35,6 @@ func main() {
 	if err := os.RemoveAll("short.sha"); err != nil {
 		panic(err)
 	}
-
-	// Args
-	workers := flag.Int("w", 1, "number of workers")
-	flag.Parse()
 
 	// Async
 	ctx, cancel := context.WithCancel(context.Background())
@@ -91,7 +93,7 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan c
 					}
 				}
 
-				if attempts%100 == 0 {
+				if attempts%*logEvery == 0 {
 					fmt.Println("worker", worker, "attempt", attempts, "elapsed", time.Since(attemptStart))
 				}
 			}
