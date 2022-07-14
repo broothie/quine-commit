@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,13 +16,13 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var (
-	workingDirectory = mustGetwd()
+const shortSHALength = 7
 
-	cloneDirectory  = flag.String("d", filepath.Join(workingDirectory, "clones"), "clone directory")
-	workers         = flag.Int("w", 1, "number of workers")
-	refreshInterval = flag.Int("r", 100, "refresh every l attempts")
-	logInterval     = flag.Int("l", 10, "log every l attempts")
+var (
+	cloneDirectory  = flag.String("d", "clones", "clone directory")
+	workers         = flag.Int("w", 3, "number of workers")
+	refreshInterval = flag.Int("r", 1000, "refresh every r attempts")
+	logInterval     = flag.Int("l", 100, "log every l attempts")
 )
 
 func init() {
@@ -34,8 +33,10 @@ func main() {
 	start := time.Now()
 	flag.Parse()
 
-	if err := os.RemoveAll("short.sha"); err != nil {
-		fmt.Println(err)
+	// Path
+	clonePath, err := filepath.Abs(*cloneDirectory)
+	if err != nil {
+		fmt.Println("failed to get absolute path of clone dir", err)
 		os.Exit(1)
 		return
 	}
@@ -47,7 +48,7 @@ func main() {
 
 	// Start workers
 	for worker := 0; worker < *workers; worker++ {
-		group.Go(findLuckySHA(ctx, start, worker, resultChan))
+		group.Go(findLuckySHA(ctx, worker, filepath.Join(clonePath, strconv.Itoa(int(start.Unix()))), resultChan))
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -60,24 +61,22 @@ func main() {
 	}
 }
 
-func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan chan string) func() error {
+func findLuckySHA(ctx context.Context, worker int, clonePath string, resultChan chan string) func() error {
 	return func() error {
-		clonePath, err := filepath.Abs(*cloneDirectory)
-		if err != nil {
-			return errors.Wrap(err, "failed to get absolute path of clone dir")
-		}
-
-		repoPath := path.Join(clonePath, strconv.Itoa(int(start.Unix())), fmt.Sprintf("%d-self-referential-commit", worker))
+		repoPath := filepath.Join(clonePath, fmt.Sprintf("%d-self-referential-commit", worker))
 
 		attempts := 0
 		for {
+			shouldRefresh := attempts%*refreshInterval == 0
+			shouldLog := attempts%*logInterval == 0
+
 			select {
 			case <-ctx.Done():
 				return nil
 			default:
 				attemptStart := time.Now()
 
-				if attempts%*refreshInterval == 0 {
+				if shouldRefresh {
 					if err := os.RemoveAll(repoPath); err != nil {
 						return errors.Wrap(err, "failed to remove repo")
 					}
@@ -87,28 +86,32 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan c
 					}
 				}
 
-				shortSha := randomShortSHA()
-				message := fmt.Sprintf("short sha: %s", shortSha)
-				output, err := gitCommit(repoPath, message)
+				shortSha := randomShortSHA(shortSHALength)
+				if err := gitCommit(repoPath, shortSha); err != nil {
+					return err
+				}
+
+				outputSha, err := gitRevParse(repoPath, shortSHALength)
 				if err != nil {
 					return err
 				}
 
-				if strings.TrimSpace(output) == fmt.Sprintf("[main %s] %s", shortSha, message) {
-					resultChan <- fmt.Sprintf("success! the lucky sha was %s from worker %d", shortSha, worker)
-					close(resultChan)
-
-					if err := os.WriteFile(path.Join(repoPath, "short.sha"), []byte(fmt.Sprintf("%s under %s", shortSha, repoPath)), 0666); err != nil {
+				if shortSha == outputSha {
+					message := fmt.Sprintf("success! the lucky sha was %s from worker %d", shortSha, worker)
+					if err := os.WriteFile(filepath.Join(repoPath, "short.sha"), []byte(message), 0666); err != nil {
 						return errors.Wrapf(err, "failed to write file under repo %q", repoPath)
 					}
+
+					resultChan <- message
+					close(resultChan)
 				} else {
 					if err := gitReset(repoPath); err != nil {
 						return err
 					}
 				}
 
-				if attempts%*logInterval == 0 {
-					fmt.Println("worker", worker, "attempt", attempts, "elapsed", time.Since(attemptStart))
+				if shouldLog {
+					fmt.Println(shortSha, "!=", outputSha, "worker", worker, "attempt", attempts, "elapsed", time.Since(attemptStart))
 				}
 			}
 
@@ -127,14 +130,24 @@ func gitClone(repoPath string) error {
 	return nil
 }
 
-func gitCommit(repoPath, message string) (string, error) {
+func gitCommit(repoPath, message string) error {
 	output, err := exec.Command("git", "-C", repoPath, "commit", "--allow-empty", "-m", message).CombinedOutput()
 	if err != nil {
 		fmt.Print(string(output))
-		return "", errors.Wrapf(err, "failed to commit to repo at %q", repoPath)
+		return errors.Wrapf(err, "failed to commit to repo at %q", repoPath)
 	}
 
-	return string(output), nil
+	return nil
+}
+
+func gitRevParse(repoPath string, length int) (string, error) {
+	output, err := exec.Command("git", "-C", repoPath, "rev-parse", fmt.Sprintf("--short=%d", length), "HEAD").CombinedOutput()
+	if err != nil {
+		fmt.Println(string(output))
+		return "", errors.Wrapf(err, "failed to parse revision at %q", repoPath)
+	}
+
+	return strings.TrimSpace(string(output)), nil
 }
 
 func gitReset(repoPath string) error {
@@ -147,21 +160,10 @@ func gitReset(repoPath string) error {
 	return nil
 }
 
-func mustGetwd() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		fmt.Println()
-		os.Exit(1)
-		return ""
-	}
-
-	return dir
-}
-
-func randomShortSHA() string {
+func randomShortSHA(length int) string {
 	const hexRunes = "0123456789abcdef"
 
-	runes := make([]rune, 7)
+	runes := make([]rune, length)
 	for i := range runes {
 		runes[i] = rune(hexRunes[rand.Intn(len(hexRunes))])
 	}
