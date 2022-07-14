@@ -81,15 +81,11 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan c
 					resultChan <- fmt.Sprintf("success! the lucky sha was %s from worker %d", shortSha, worker)
 					close(resultChan)
 
-					if err := os.WriteFile("short.sha", []byte(shortSha), 0666); err != nil {
+					if err := os.WriteFile(path.Join(repoPath, "short.sha"), []byte(shortSha), 0666); err != nil {
 						return errors.Wrapf(err, "failed to write file under repo %q", repoPath)
 					}
 				} else {
 					if err := gitReset(repoPath); err != nil {
-						return err
-					}
-
-					if err := gitGC(repoPath); err != nil {
 						return err
 					}
 				}
