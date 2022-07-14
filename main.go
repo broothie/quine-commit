@@ -23,6 +23,7 @@ var (
 	cloneDirectory  = flag.String("d", filepath.Join(workingDirectory, "clones"), "clone directory")
 	workers         = flag.Int("w", 1, "number of workers")
 	refreshInterval = flag.Int("r", 100, "refresh every l attempts")
+	logInterval     = flag.Int("l", 10, "log every l attempts")
 )
 
 func init() {
@@ -105,7 +106,7 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan c
 					}
 				}
 
-				if attempts%*refreshInterval == 0 {
+				if attempts%*logInterval == 0 {
 					fmt.Println("worker", worker, "attempt", attempts, "elapsed", time.Since(attemptStart))
 				}
 			}
