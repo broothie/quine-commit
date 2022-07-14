@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,8 +18,11 @@ import (
 )
 
 var (
-	workers  = flag.Int("w", 1, "number of workers")
-	logEvery = flag.Int("l", 10, "log every l attempts")
+	workingDirectory = mustGetwd()
+
+	cloneDirectory  = flag.String("d", filepath.Join(workingDirectory, "clones"), "clone directory")
+	workers         = flag.Int("w", 1, "number of workers")
+	refreshInterval = flag.Int("r", 100, "refresh every l attempts")
 )
 
 func init() {
@@ -26,14 +30,8 @@ func init() {
 }
 
 func main() {
-	flag.Parse()
-
 	start := time.Now()
-	if err := os.RemoveAll("clones"); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-		return
-	}
+	flag.Parse()
 
 	if err := os.RemoveAll("short.sha"); err != nil {
 		fmt.Println(err)
@@ -62,10 +60,12 @@ func main() {
 
 func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan chan string) func() error {
 	return func() error {
-		repoPath := path.Join("clones", strconv.Itoa(int(start.Unix())), fmt.Sprintf("%d-self-referential-commit", worker))
-		if err := gitClone(repoPath); err != nil {
-			return errors.Wrapf(err, "failed to git init %q", repoPath)
+		clonePath, err := filepath.Abs(*cloneDirectory)
+		if err != nil {
+			return errors.Wrap(err, "failed to get absolute path of clone dir")
 		}
+
+		repoPath := path.Join(clonePath, strconv.Itoa(int(start.Unix())), fmt.Sprintf("%d-self-referential-commit", worker))
 
 		attempts := 0
 		for {
@@ -74,6 +74,16 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan c
 				return nil
 			default:
 				attemptStart := time.Now()
+
+				if attempts%*refreshInterval == 0 {
+					if err := os.RemoveAll(repoPath); err != nil {
+						return errors.Wrap(err, "failed to remove repo")
+					}
+
+					if err := gitClone(repoPath); err != nil {
+						return errors.Wrapf(err, "failed to git clone %q", repoPath)
+					}
+				}
 
 				shortSha := randomShortSHA()
 				message := fmt.Sprintf("short sha: %s", shortSha)
@@ -86,7 +96,7 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan c
 					resultChan <- fmt.Sprintf("success! the lucky sha was %s from worker %d", shortSha, worker)
 					close(resultChan)
 
-					if err := os.WriteFile(path.Join(repoPath, "short.sha"), []byte(shortSha), 0666); err != nil {
+					if err := os.WriteFile(path.Join(repoPath, "short.sha"), []byte(fmt.Sprintf("%s under %s", shortSha, repoPath)), 0666); err != nil {
 						return errors.Wrapf(err, "failed to write file under repo %q", repoPath)
 					}
 				} else {
@@ -95,7 +105,7 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan c
 					}
 				}
 
-				if attempts%*logEvery == 0 {
+				if attempts%*refreshInterval == 0 {
 					fmt.Println("worker", worker, "attempt", attempts, "elapsed", time.Since(attemptStart))
 				}
 			}
@@ -135,14 +145,15 @@ func gitReset(repoPath string) error {
 	return nil
 }
 
-func gitGC(repoPath string) error {
-	output, err := exec.Command("git", "-C", repoPath, "gc").CombinedOutput()
+func mustGetwd() string {
+	dir, err := os.Getwd()
 	if err != nil {
-		fmt.Print(string(output))
-		return errors.Wrapf(err, "failed to gc repo at %q", repoPath)
+		fmt.Println()
+		os.Exit(1)
+		return ""
 	}
 
-	return nil
+	return dir
 }
 
 func randomShortSHA() string {
