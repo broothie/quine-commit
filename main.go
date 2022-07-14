@@ -23,10 +23,11 @@ var (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	flag.Parse()
 }
 
 func main() {
+	flag.Parse()
+
 	start := time.Now()
 	if err := os.RemoveAll("clones"); err != nil {
 		panic(err)
