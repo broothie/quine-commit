@@ -93,7 +93,7 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, shaChan chan
 				}
 
 				if attempts%100 == 0 {
-					fmt.Println("attempt", attempts, "elapsed", time.Since(attemptStart))
+					fmt.Println("worker", worker, "attempt", attempts, "elapsed", time.Since(attemptStart))
 				}
 			}
 
