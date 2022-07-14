@@ -30,11 +30,15 @@ func main() {
 
 	start := time.Now()
 	if err := os.RemoveAll("clones"); err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(1)
+		return
 	}
 
 	if err := os.RemoveAll("short.sha"); err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(1)
+		return
 	}
 
 	// Async
@@ -51,7 +55,8 @@ func main() {
 	fmt.Println(<-resultChan)
 	cancel()
 	if err := group.Wait(); err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
 
