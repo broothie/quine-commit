@@ -45,7 +45,7 @@ func main() {
 	}
 
 	sha := <-shaChan
-	fmt.Printf("success! the lucky sha was %q\n", sha)
+	fmt.Printf("success! the lucky sha was %s\n", sha)
 
 	cancel()
 	if err := group.Wait(); err != nil {
@@ -56,18 +56,21 @@ func main() {
 func findLuckySHA(ctx context.Context, start time.Time, worker int, shaChan chan string) func() error {
 	return func() error {
 		repoPath := path.Join("clones", strconv.Itoa(int(start.Unix())), fmt.Sprintf("%d-self-referential-commit", worker))
-		if err := gitInit(ctx, repoPath); err != nil {
+		if err := gitClone(repoPath); err != nil {
 			return errors.Wrapf(err, "failed to git init %q", repoPath)
 		}
 
+		attempts := 0
 		for {
 			select {
 			case <-ctx.Done():
 				return nil
 			default:
+				attemptStart := time.Now()
+
 				shortSha := randomShortSHA()
 				message := fmt.Sprintf("short sha: %s", shortSha)
-				output, err := gitCommit(ctx, repoPath, message)
+				output, err := gitCommit(repoPath, message)
 				if err != nil {
 					return err
 				}
@@ -80,53 +83,59 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, shaChan chan
 						return errors.Wrapf(err, "failed to write file under repo %q", repoPath)
 					}
 				} else {
-					if err := gitReset(ctx, repoPath); err != nil {
+					if err := gitReset(repoPath); err != nil {
 						return err
 					}
 
-					if err := gitGC(ctx, repoPath); err != nil {
+					if err := gitGC(repoPath); err != nil {
 						return err
 					}
 				}
+
+				if worker == 0 && attempts%1000 == 0 {
+					fmt.Println("attempt", attempts, "elapsed", time.Since(attemptStart))
+				}
 			}
+
+			attempts += 1
 		}
 	}
 }
 
-func gitInit(ctx context.Context, repoPath string) error {
-	output, err := exec.CommandContext(ctx, "git", "clone", "https://github.com/broothie/self-referential-commit.git", repoPath).CombinedOutput()
+func gitClone(repoPath string) error {
+	output, err := exec.Command("git", "clone", "https://github.com/broothie/self-referential-commit.git", repoPath).CombinedOutput()
+	fmt.Print(string(output))
 	if err != nil {
-		fmt.Println(string(output))
 		return errors.Wrapf(err, "failed to init git repo at %q", repoPath)
 	}
 
 	return nil
 }
 
-func gitCommit(ctx context.Context, repoPath, message string) (string, error) {
-	output, err := exec.CommandContext(ctx, "git", "-C", repoPath, "commit", "--allow-empty", "-m", message).CombinedOutput()
+func gitCommit(repoPath, message string) (string, error) {
+	output, err := exec.Command("git", "-C", repoPath, "commit", "--allow-empty", "-m", message).CombinedOutput()
 	if err != nil {
-		fmt.Println(string(output))
+		fmt.Print(string(output))
 		return "", errors.Wrapf(err, "failed to commit to repo at %q", repoPath)
 	}
 
 	return string(output), nil
 }
 
-func gitReset(ctx context.Context, repoPath string) error {
-	output, err := exec.CommandContext(ctx, "git", "-C", repoPath, "reset", "--hard", "HEAD~").CombinedOutput()
+func gitReset(repoPath string) error {
+	output, err := exec.Command("git", "-C", repoPath, "reset", "--hard", "HEAD~").CombinedOutput()
 	if err != nil {
-		fmt.Println(string(output))
+		fmt.Print(string(output))
 		return errors.Wrapf(err, "failed to reset repo at %q", repoPath)
 	}
 
 	return nil
 }
 
-func gitGC(ctx context.Context, repoPath string) error {
-	output, err := exec.CommandContext(ctx, "git", "-C", repoPath, "gc").CombinedOutput()
+func gitGC(repoPath string) error {
+	output, err := exec.Command("git", "-C", repoPath, "gc").CombinedOutput()
 	if err != nil {
-		fmt.Println(string(output))
+		fmt.Print(string(output))
 		return errors.Wrapf(err, "failed to gc repo at %q", repoPath)
 	}
 
