@@ -37,23 +37,22 @@ func main() {
 	// Async
 	ctx, cancel := context.WithCancel(context.Background())
 	group, ctx := errgroup.WithContext(ctx)
-	shaChan := make(chan string)
+	resultChan := make(chan string)
 
 	// Start workers
 	for worker := 0; worker < *workers; worker++ {
-		group.Go(findLuckySHA(ctx, start, worker, shaChan))
+		group.Go(findLuckySHA(ctx, start, worker, resultChan))
 	}
 
-	sha := <-shaChan
-	fmt.Printf("success! the lucky sha was %s\n", sha)
-
+	// Wait and cancel
+	fmt.Println(<-resultChan)
 	cancel()
 	if err := group.Wait(); err != nil {
 		panic(err)
 	}
 }
 
-func findLuckySHA(ctx context.Context, start time.Time, worker int, shaChan chan string) func() error {
+func findLuckySHA(ctx context.Context, start time.Time, worker int, resultChan chan string) func() error {
 	return func() error {
 		repoPath := path.Join("clones", strconv.Itoa(int(start.Unix())), fmt.Sprintf("%d-self-referential-commit", worker))
 		if err := gitClone(repoPath); err != nil {
@@ -76,8 +75,8 @@ func findLuckySHA(ctx context.Context, start time.Time, worker int, shaChan chan
 				}
 
 				if strings.TrimSpace(output) == fmt.Sprintf("[main %s] %s", shortSha, message) {
-					shaChan <- shortSha
-					close(shaChan)
+					resultChan <- fmt.Sprintf("success! the lucky sha was %s from worker %d", shortSha, worker)
+					close(resultChan)
 
 					if err := os.WriteFile("short.sha", []byte(shortSha), 0666); err != nil {
 						return errors.Wrapf(err, "failed to write file under repo %q", repoPath)
