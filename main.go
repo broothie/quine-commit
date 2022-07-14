@@ -34,6 +34,13 @@ func main() {
 	flag.Parse()
 
 	// Path
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Println("failed to get working directory", err)
+		os.Exit(1)
+		return
+	}
+
 	clonePath, err := filepath.Abs(*cloneDirectory)
 	if err != nil {
 		fmt.Println("failed to get absolute path of clone dir", err)
@@ -48,7 +55,7 @@ func main() {
 
 	// Start workers
 	for worker := 0; worker < *workers; worker++ {
-		group.Go(findLuckySHA(ctx, worker, filepath.Join(clonePath, strconv.Itoa(int(start.Unix()))), resultChan))
+		group.Go(findLuckySHA(ctx, worker, wd, filepath.Join(clonePath, strconv.Itoa(int(start.Unix()))), resultChan))
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -61,7 +68,7 @@ func main() {
 	}
 }
 
-func findLuckySHA(ctx context.Context, worker int, clonePath string, resultChan chan string) func() error {
+func findLuckySHA(ctx context.Context, worker int, remotePath, clonePath string, resultChan chan string) func() error {
 	return func() error {
 		repoPath := filepath.Join(clonePath, fmt.Sprintf("%d-self-referential-commit", worker))
 
@@ -81,7 +88,7 @@ func findLuckySHA(ctx context.Context, worker int, clonePath string, resultChan 
 						return errors.Wrap(err, "failed to remove repo")
 					}
 
-					if err := gitClone(repoPath); err != nil {
+					if err := gitCloneLocal(remotePath, repoPath); err != nil {
 						return errors.Wrapf(err, "failed to git clone %q", repoPath)
 					}
 				}
@@ -125,6 +132,16 @@ func gitClone(repoPath string) error {
 	fmt.Print(string(output))
 	if err != nil {
 		return errors.Wrapf(err, "failed to init git repo at %q", repoPath)
+	}
+
+	return nil
+}
+
+func gitCloneLocal(remotePath, repoPath string) error {
+	output, err := exec.Command("git", "clone", remotePath, repoPath).CombinedOutput()
+	fmt.Print(string(output))
+	if err != nil {
+		return errors.Wrapf(err, "failed to clone git repo at %q", repoPath)
 	}
 
 	return nil
