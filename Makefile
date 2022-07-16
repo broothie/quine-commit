@@ -1,3 +1,5 @@
+workers ?= 300
+dir ?= ../clones
 
 list:
 	@ cat Makefile
@@ -13,7 +15,7 @@ i.tail:
 	tail -f nohup.out
 
 i.run: i.clean self-referential-commit
-	nohup ./self-referential-commit -w 300 -d ../clones &
+	nohup ./self-referential-commit -w $(workers) -d $(dir) &
 
 i.ps:
 	ps ax | grep self-referential-commit

@@ -56,6 +56,7 @@ func main() {
 	worker := 0
 	for ; worker < *workers; worker++ {
 		go findLuckySHA(worker, workingDirectory, clonePath, doneChan, errChan)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	go func() {
