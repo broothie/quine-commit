@@ -64,6 +64,7 @@ func main() {
 			fmt.Println("error", err)
 			go findLuckySHA(worker, workingDirectory, clonePath, doneChan, errChan)
 			worker++
+			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 
