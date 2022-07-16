@@ -13,7 +13,7 @@ i.tail:
 	tail -f nohup.out
 
 i.run: i.clean self-referential-commit
-	nohup ./self-referential-commit -w 1000 -d ../clones &
+	nohup ./self-referential-commit -w 300 -d ../clones &
 
 i.ps:
 	ps ax | grep self-referential-commit

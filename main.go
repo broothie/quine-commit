@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"golang.org/x/sync/errgroup"
 )
 
 const shortSHALength = 7
@@ -34,7 +32,7 @@ func main() {
 	flag.Parse()
 
 	// Path
-	wd, err := os.Getwd()
+	workingDirectory, err := os.Getwd()
 	if err != nil {
 		fmt.Println("failed to get working directory", err)
 		os.Exit(1)
@@ -48,93 +46,86 @@ func main() {
 		return
 	}
 
+	clonePath = filepath.Join(clonePath, strconv.Itoa(int(start.Unix())))
+
 	// Async
-	ctx, cancel := context.WithCancel(context.Background())
-	group, ctx := errgroup.WithContext(ctx)
-	resultChan := make(chan string)
+	doneChan := make(chan struct{})
+	errChan := make(chan error)
 
 	// Start workers
-	for worker := 0; worker < *workers; worker++ {
-		group.Go(findLuckySHA(ctx, worker, wd, filepath.Join(clonePath, strconv.Itoa(int(start.Unix()))), resultChan))
-		time.Sleep(100 * time.Millisecond)
+	worker := 0
+	for ; worker < *workers; worker++ {
+		go findLuckySHA(worker, workingDirectory, clonePath, doneChan, errChan)
 	}
+
+	go func() {
+		for err := range errChan {
+			fmt.Println("error", err)
+			go findLuckySHA(worker, workingDirectory, clonePath, doneChan, errChan)
+			worker++
+		}
+	}()
 
 	// Wait and cancel
-	fmt.Println(<-resultChan)
-	cancel()
-	if err := group.Wait(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	<-doneChan
 }
 
-func findLuckySHA(ctx context.Context, worker int, remotePath, clonePath string, resultChan chan string) func() error {
-	return func() error {
-		repoPath := filepath.Join(clonePath, fmt.Sprintf("%d-self-referential-commit", worker))
+func findLuckySHA(worker int, remotePath, clonePath string, doneChan chan struct{}, errChan chan error) {
+	repoPath := filepath.Join(clonePath, fmt.Sprintf("%d-self-referential-commit", worker))
 
-		attempts := 0
-		for {
-			shouldRefresh := attempts%*refreshInterval == 0
-			shouldLog := attempts%*logInterval == 0
+	for attempts := 0; ; attempts++ {
+		start := time.Now()
+		shouldRefresh := attempts%*refreshInterval == 0
+		shouldLog := attempts%*logInterval == 0
 
-			select {
-			case <-ctx.Done():
-				return nil
-			default:
-				attemptStart := time.Now()
-
-				if shouldRefresh {
-					if err := os.RemoveAll(repoPath); err != nil {
-						return errors.Wrap(err, "failed to remove repo")
-					}
-
-					if err := gitCloneLocal(remotePath, repoPath); err != nil {
-						return errors.Wrapf(err, "failed to git clone %q", repoPath)
-					}
-				}
-
-				shortSha := randomShortSHA(shortSHALength)
-				if err := gitCommit(repoPath, shortSha); err != nil {
-					return err
-				}
-
-				outputSha, err := gitRevParse(repoPath, shortSHALength)
-				if err != nil {
-					return err
-				}
-
-				if shortSha == outputSha {
-					message := fmt.Sprintf("success! the lucky sha was %s from worker %d", shortSha, worker)
-					if err := os.WriteFile(filepath.Join(repoPath, "short.sha"), []byte(message), 0666); err != nil {
-						return errors.Wrapf(err, "failed to write file under repo %q", repoPath)
-					}
-
-					resultChan <- message
-					close(resultChan)
-				} else {
-					if err := gitReset(repoPath); err != nil {
-						return err
-					}
-				}
-
-				if shouldLog {
-					fmt.Println(shortSha, "!=", outputSha, "worker", worker, "attempt", attempts, "elapsed", time.Since(attemptStart))
-				}
+		if shouldRefresh {
+			if err := os.RemoveAll(repoPath); err != nil {
+				errChan <- errors.Wrap(err, "failed to remove repo")
+				return
 			}
 
-			attempts += 1
+			if err := gitCloneLocal(remotePath, repoPath); err != nil {
+				errChan <- errors.Wrapf(err, "failed to git clone %q", repoPath)
+				return
+			}
+		}
+
+		shortSha := randomShortSHA(shortSHALength)
+		if err := gitCommit(repoPath, shortSha); err != nil {
+			errChan <- err
+			return
+		}
+
+		outputSha, err := gitRevParse(repoPath, shortSHALength)
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		if shortSha == outputSha || attempts > 10 && worker == 0 {
+			message := fmt.Sprintf("success! the lucky sha was %s from worker %d", shortSha, worker)
+			fmt.Println(message)
+			if err := os.WriteFile(filepath.Join(repoPath, "short.sha"), []byte(message), 0666); err != nil {
+				fmt.Println("failed to write file under repo", repoPath, err)
+				return
+			}
+
+			close(doneChan)
+		} else {
+			if err := gitReset(repoPath); err != nil {
+				errChan <- err
+				return
+			}
+		}
+
+		if shouldLog {
+			fmt.Println(shortSha, "!=", outputSha, "worker", worker, "attempt", attempts, "elapsed", time.Since(start))
 		}
 	}
 }
 
 func gitClone(repoPath string) error {
-	output, err := exec.Command("git", "clone", "https://github.com/broothie/self-referential-commit.git", repoPath).CombinedOutput()
-	fmt.Print(string(output))
-	if err != nil {
-		return errors.Wrapf(err, "failed to init git repo at %q", repoPath)
-	}
-
-	return nil
+	return gitCloneLocal("https://github.com/broothie/self-referential-commit.git", repoPath)
 }
 
 func gitCloneLocal(remotePath, repoPath string) error {
