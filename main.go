@@ -102,7 +102,7 @@ func findLuckySHA(worker int, remotePath, clonePath string, doneChan chan struct
 			return
 		}
 
-		if shortSha == outputSha || attempts > 10 && worker == 0 {
+		if shortSha == outputSha {
 			message := fmt.Sprintf("success! the lucky sha was %s from worker %d", shortSha, worker)
 			fmt.Println(message)
 			if err := os.WriteFile(filepath.Join(repoPath, "short.sha"), []byte(message), 0666); err != nil {
