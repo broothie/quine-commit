@@ -26,7 +26,7 @@ kill:
 	rm pid
 
 ps:
-	ps ax | grep self-referential-commit
+	ps -ax | grep self-referential-commit | grep -v grep
 
 ssh:
 	gcloud compute ssh --zone us-central1-a --project andrewb-general instance-4
