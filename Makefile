@@ -19,14 +19,9 @@ run: clean self-referential-commit
 
 nohup: clean self-referential-commit
 	nohup ./self-referential-commit -w $(workers) -d $(dir) &
-	echo $$! > pid
-
-kill:
-	kill $$(cat pid)
-	rm pid
 
 ps:
-	ps -ax | grep self-referential-commit | grep -v grep
+	@ ps -ax | grep self-referential-commit | grep -v grep ||:
 
 ssh:
 	gcloud compute ssh --zone us-central1-a --project andrewb-general instance-4
