@@ -19,10 +19,10 @@ run: clean self-referential-commit
 
 nohup: clean self-referential-commit
 	nohup ./self-referential-commit -w $(workers) -d $(dir) &
-	echo $! > pid
+	echo $$! > pid
 
 kill:
-	bash -c 'kill $(cat pid)'
+	kill $$(cat pid)
 	rm pid
 
 ps:
