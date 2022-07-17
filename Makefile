@@ -23,5 +23,8 @@ nohup: clean self-referential-commit
 ps:
 	@ ps -ax | grep self-referential-commit | grep -v grep ||:
 
-ssh:
+gcloud:
 	gcloud compute ssh --zone us-central1-a --project andrewb-general instance-4
+
+pi:
+	ssh raspberrypi.local
