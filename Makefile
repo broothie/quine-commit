@@ -23,6 +23,7 @@ nohup: clean self-referential-commit
 
 kill:
 	bash -c 'kill $(cat pid)'
+	rm pid
 
 ps:
 	ps ax | grep self-referential-commit
