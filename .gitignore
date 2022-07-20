@@ -1,3 +1,5 @@
 clones
 .local/remote.nohup.out
 self-referential-commit
+nohup.out
+pid

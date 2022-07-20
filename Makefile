@@ -1,4 +1,4 @@
-workers ?= 300
+workers ?= 3
 dir ?= ../clones
 
 list:
@@ -9,16 +9,22 @@ self-referential-commit:
 
 clean:
 	go clean
-	rm -rf nohup.out pid ../clones
+	rm -rf nohup.out ../clones
 
 tail:
 	tail -f nohup.out
 
 run: clean self-referential-commit
+	./self-referential-commit -w $(workers) -d $(dir)
+
+nohup: clean self-referential-commit
 	nohup ./self-referential-commit -w $(workers) -d $(dir) &
 
 ps:
-	ps ax | grep self-referential-commit
+	@ ps -ax | grep self-referential-commit | grep -v grep ||:
 
-ssh:
+gcloud:
 	gcloud compute ssh --zone us-central1-a --project andrewb-general instance-4
+
+pi:
+	ssh raspberrypi.local
