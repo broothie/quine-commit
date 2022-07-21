@@ -73,7 +73,7 @@ func main() {
 }
 
 func findLuckySHA(worker int, remotePath, clonePath string, doneChan chan struct{}, errChan chan error) {
-	repoPath := filepath.Join(clonePath, fmt.Sprintf("%d-self-referential-commit", worker))
+	repoPath := filepath.Join(clonePath, fmt.Sprintf("%d-quine-commit", worker))
 
 	for attempts := 0; ; attempts++ {
 		start := time.Now()
@@ -127,7 +127,7 @@ func findLuckySHA(worker int, remotePath, clonePath string, doneChan chan struct
 }
 
 func gitClone(repoPath string) error {
-	return gitCloneLocal("https://github.com/broothie/self-referential-commit.git", repoPath)
+	return gitCloneLocal("https://github.com/broothie/quine-commit.git", repoPath)
 }
 
 func gitCloneLocal(remotePath, repoPath string) error {

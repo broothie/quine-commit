@@ -4,7 +4,7 @@ dir ?= ../clones
 list:
 	@ cat Makefile
 
-self-referential-commit:
+quine-commit:
 	go build
 
 clean:
@@ -14,14 +14,14 @@ clean:
 tail:
 	tail -f nohup.out
 
-run: clean self-referential-commit
-	./self-referential-commit -w $(workers) -d $(dir)
+run: clean quine-commit
+	./quine-commit -w $(workers) -d $(dir)
 
-nohup: clean self-referential-commit
-	nohup ./self-referential-commit -w $(workers) -d $(dir) &
+nohup: clean quine-commit
+	nohup ./quine-commit -w $(workers) -d $(dir) &
 
 ps:
-	@ ps -ax | grep self-referential-commit | grep -v grep ||:
+	@ ps -ax | grep quine-commit | grep -v grep ||:
 
 gcloud:
 	gcloud compute ssh --zone us-central1-a --project andrewb-general instance-4

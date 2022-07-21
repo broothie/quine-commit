@@ -1,5 +1,5 @@
 clones
 .local/remote.nohup.out
-self-referential-commit
+quine-commit
 nohup.out
 pid
