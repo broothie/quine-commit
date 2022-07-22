@@ -1,6 +1,8 @@
 # Welcome to the Quine Commit!
 
-This commit represents the output of an attempt to generate a commit where the commit message is the short SHA of the commit itself. **Go ahead -- click on the commit message.**
+This commit represents the output of an attempt to generate a commit where the ***commit message is the short SHA of the commit itself***.
+
+Go ahead: click on the commit message.
 
 ## How it went down
 
@@ -26,7 +28,7 @@ The final version of the program does the following:
             - then bail
         - if not:
             - `git reset --hard HEAD~`
-    - occasionally, nuke the repo and re-`git init`
+    - occasionally, remove the repo and re-`git init`
 
 ### How it was run
 
@@ -61,7 +63,9 @@ This became clear after two things:
 - I started seeing messages about `git` automatically running `git gc`
 - I checked the `reflog` and, well, there're at least some remnants of the reset commits in there
 
-I briefly had a version of the program which would run `git gc` after every `reset`, but that didn't seem to help either upon checking the reflog, so I ended up adding an occasional nuke and re-`init` of the repo. Then, how can you *truly* get rid of your changes? (I'm sure there's a way, I just haven't gotten around to Googling it).
+I briefly had a version of the program which would run `git gc` after every `reset`, but that didn't seem to help either upon checking the reflog, so I ended up adding an occasional nuke and re-`init` of the repo.
+
+But then, how can you *truly* get rid of your changes without `rm-rf`-ing? (I'm sure there's a way, I just haven't gotten around to Googling it).
 
 ### Did I really need 300 workers?
 
